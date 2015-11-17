@@ -1,0 +1,201 @@
+---
+layout: post
+title:  "De-ICE S1.100 walkthrough"
+date:   2015-11-16 12:55:41 -0800
+categories: Pentesting
+---
+## Information Gathering
+
+### Service Enumeration
+
+<pre>
+<code>
+root@kali:~# nmap -p21,22,25,80,110,143,443 -sV 192.168.1.100
+Starting Nmap 6.49BETA4 ( https://nmap.org ) at 2015-11-11 01:52 EST
+Nmap scan report for 192.168.1.100
+Host is up (0.00035s latency).
+PORT    STATE  SERVICE VERSION
+21/tcp  open   ftp     vsftpd (broken: could not bind listening IPv4 socket)
+22/tcp  open   ssh     OpenSSH 4.3 (protocol 1.99)
+25/tcp  open   smtp    Sendmail 8.13.7/8.13.7
+80/tcp  open   http    Apache httpd 2.0.55 ((Unix) PHP/5.1.2)
+110/tcp open   pop3    Openwall popa3d
+143/tcp open   imap    UW imapd 2004.357
+443/tcp closed https
+MAC Address: 08:00:27:54:93:FD (Cadmus Computer Systems)
+</code>
+</pre>
+
+FTP connection to port TCP 21 gives me the following error:
+
+<pre>
+<code>
+# ftp 192.168.1.100
+Connected to 192.168.1.100.
+500 OOPS: could not bind listening IPv4 socket
+</code>
+</pre>
+
+
+### Web Server Enumeration
+
+There's a Webserver listening on TCP 80. This webserver is hosting a page on /index2.php containing employee's email addresses and names:
+
+![Alt text](/images/screen1.png)
+
+<pre>
+Head of HR: Marie Mary - marym@herot.net (On Emergency Leave)
+Employee Pay: Pat Patrick - patrickp@herot.net
+Travel Comp: Terry Thompson - thompsont@herot.net
+Benefits: Ben Benedict - benedictb@herot.net
+
+Director of Engineering: Erin Gennieg - genniege@herot.net
+Project Manager: Paul Michael - michaelp@herot.net
+Engineer Lead: Ester Long - longe@herot.net
+
+Sr. System Admin: Adam Adams - adamsa@herot.net
+System Admin (Intern): Bob Banter - banterb@herot.net
+System Admin: Chad Coffee - coffeec@herot.net
+</pre>
+
+Using <b>dirb</b>, I was able to enumerate 4 more webpages:
+
+<pre>
++ http://192.168.1.100/~ftp (CODE:403|SIZE:412)
++ http://192.168.1.100/cgi-bin/ (CODE:403|SIZE:297)
++ http://192.168.1.100/index.php (CODE:200|SIZE:1983)
++ http://192.168.1.100/info.php (CODE:200|SIZE:37922)
+</pre>
+
+/~ftp and /cgi-bin/ are not accessible. <b>info.php</b> contains the PHP configuration of the website:
+
+![Alt text](/images/screen2.png)
+
+Some interesting information from the info.php:
+
+- The kernel is 2.6.16 32bit
+- allow_url_fopen is enable, which can be used is there's a RFI vulnerability present
+- Apache is running under nobody's account, which means I won't get root access in case of a compromise throught the web server application
+
+To generate a possible wordlist to use against password attacks, I use the tool cewl to grab information from the webpage /index2.php and generate a list of possible passwords:
+
+![Alt text](/images/screen3.png)
+
+The SysAdmins are the most probably users of the core system, so I generate a simple list with possible usernames for the OS:
+
+Some companies use the email username section as usernames, but other permutations may happen as well. What I did was also use first letter of first name + surname:
+
+<pre>
+aadams
+bbanter
+ccoffee
+</pre>
+
+and the normal email usernames:
+
+<pre>
+adamsa
+banterb
+coffeec
+</pre>
+
+I put everything into a file admin_users.txt.
+
+### SMTP Enumeration
+
+Now I can use the SMTP server to enumerate the admin_users.txt list:
+
+![Alt text](/images/screen4.png)
+
+I get 3 usernames found: <b>aadams</b>, <b>bbanter</b>, <b>ccofee</b>. Notice also that I had to use a <b>from email: my@slax.example.net</b> which is the domain the SMTP server accepts.
+
+## Exploitation
+
+### Penetrating the System
+
+Per the previous information gathering phase, I was able to learn that there are at least 3 known users in the system: aadams, bbanter, ccofee.
+
+Per the information available in the website, I know that Bob Banter (bbanter) is an intern and probably lacks some good security pratices. This makes him a target.
+
+I was able to login into the system through SSH, using the username bbanter and password bbanter:
+
+![Alt text](/images/screen5.png)
+
+As expected, Bob Banter is not following the good security practices and used his username as the password.
+
+### Local Privilege Escalation
+
+From the /etc/passwd file I can see the account aadams is part of the wheel group, which means it can sudo with root privileges:
+
+![Alt text](/images/screen6.png)
+
+The account aadams becomes a target as it can provide me high privileges on the machine.
+
+I run a password brute force attack against aadams account with Hydra and I get the nostradamus password:
+
+![Alt text](/images/screen7.png)
+
+I've used the pop3 service as it's much faster than trying the brute force against SSH.
+
+
+I can now change to account aadams and use sudo to get the shadow file:
+
+![Alt text](/images/screen8.png)
+
+![Alt text](/images/screen9.png)
+
+root hash password: $1$TOi0HE5n$j3obHaAlUdMbHQnJ4Y5Dq0
+
+<pre>
+aadams:$1$6cP/ya8m$2CNF8mE.ONyQipxlwjp8P1:13550:0:99999:7:::
+bbanter:$1$hl312g8m$Cf9v9OoRN062STzYiWDTh1:13550:0:99999:7:::
+ccoffee:$1$nsHnABm3$OHraCR9ro.idCMtEiFPPA.:13550:0:99999:7:::
+</pre>
+
+
+Just using the account aadams and sudo I can see there's a interesting file in /home/ftp/incoming:
+
+![Alt text](/images/screen10.png)
+
+The file seems to be encrypted.
+
+I proceed and try to crack the password hashes in the shadow with john the ripper:
+
+<pre>
+root@kali:~# john --wordlist=/usr/share/wordlists/rockyou.txt pass.txt
+</pre>
+
+I was able to crack the hash:
+
+<pre>
+root@kali:~# john --show pass.txt 
+root:tarot
+</pre>
+
+I also found out the ccoffee's password:
+<pre>
+ccoffee:hierophant
+</pre>
+
+At this moment I have the password for root and the 3 admins:
+
+<pre>
+root:tarot
+aadams:nostradamus
+bbanter:bbanter
+ccoffee:hierophant
+</pre>
+
+### Capturing the Flag
+
+Analysing the file salary_dec2003.csv.enc with strings, I see the Salted__ word. Some googling tells me this is a openssl encrypted file. 
+
+From the /etc/passwd file I got a hint that the root's password might be used in the FTP encryption (and consequently the .csv file). I scp the file to my Kali machine and use openssl to decrypt the file:
+
+<pre>
+root@kali:~# openssl enc -aes-128-cbc -d -in salary_dec2003.csv.enc -out salary_dec2003.csv -k tarot
+</pre>
+
+I didn't know the cipher used for the encryption, so I tried the first one and I was lucky. Now I open the .csv file in Excel:
+
+![Alt text](/images/screen11.png)

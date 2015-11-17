@@ -1,0 +1,238 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Another security blog</title>
+    <description>My adventures in the Infosec world.
+</description>
+    <link>/</link>
+    <atom:link href="/feed.xml" rel="self" type="application/rss+xml"/>
+    <pubDate>Mon, 16 Nov 2015 15:45:44 -0800</pubDate>
+    <lastBuildDate>Mon, 16 Nov 2015 15:45:44 -0800</lastBuildDate>
+    <generator>Jekyll v3.0.0</generator>
+    
+      <item>
+        <title>De-ICE S1.100 walkthrough</title>
+        <description>&lt;h2 id=&quot;information-gathering&quot;&gt;Information Gathering&lt;/h2&gt;
+
+&lt;h3 id=&quot;service-enumeration&quot;&gt;Service Enumeration&lt;/h3&gt;
+
+&lt;pre&gt;
+&lt;code&gt;
+root@kali:~# nmap -p21,22,25,80,110,143,443 -sV 192.168.1.100
+Starting Nmap 6.49BETA4 ( https://nmap.org ) at 2015-11-11 01:52 EST
+Nmap scan report for 192.168.1.100
+Host is up (0.00035s latency).
+PORT    STATE  SERVICE VERSION
+21/tcp  open   ftp     vsftpd (broken: could not bind listening IPv4 socket)
+22/tcp  open   ssh     OpenSSH 4.3 (protocol 1.99)
+25/tcp  open   smtp    Sendmail 8.13.7/8.13.7
+80/tcp  open   http    Apache httpd 2.0.55 ((Unix) PHP/5.1.2)
+110/tcp open   pop3    Openwall popa3d
+143/tcp open   imap    UW imapd 2004.357
+443/tcp closed https
+MAC Address: 08:00:27:54:93:FD (Cadmus Computer Systems)
+&lt;/code&gt;
+&lt;/pre&gt;
+
+&lt;p&gt;FTP connection to port TCP 21 gives me the following error:&lt;/p&gt;
+
+&lt;pre&gt;
+&lt;code&gt;
+# ftp 192.168.1.100
+Connected to 192.168.1.100.
+500 OOPS: could not bind listening IPv4 socket
+&lt;/code&gt;
+&lt;/pre&gt;
+
+&lt;h3 id=&quot;web-server-enumeration&quot;&gt;Web Server Enumeration&lt;/h3&gt;
+
+&lt;p&gt;There’s a Webserver listening on TCP 80. This webserver is hosting a page on /index2.php containing employee’s email addresses and names:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/images/screen1.png&quot; alt=&quot;Alt text&quot; /&gt;&lt;/p&gt;
+
+&lt;pre&gt;
+Head of HR: Marie Mary - marym@herot.net (On Emergency Leave)
+Employee Pay: Pat Patrick - patrickp@herot.net
+Travel Comp: Terry Thompson - thompsont@herot.net
+Benefits: Ben Benedict - benedictb@herot.net
+
+Director of Engineering: Erin Gennieg - genniege@herot.net
+Project Manager: Paul Michael - michaelp@herot.net
+Engineer Lead: Ester Long - longe@herot.net
+
+Sr. System Admin: Adam Adams - adamsa@herot.net
+System Admin (Intern): Bob Banter - banterb@herot.net
+System Admin: Chad Coffee - coffeec@herot.net
+&lt;/pre&gt;
+
+&lt;p&gt;Using &lt;b&gt;dirb&lt;/b&gt;, I was able to enumerate 4 more webpages:&lt;/p&gt;
+
+&lt;pre&gt;
++ http://192.168.1.100/~ftp (CODE:403|SIZE:412)
++ http://192.168.1.100/cgi-bin/ (CODE:403|SIZE:297)
++ http://192.168.1.100/index.php (CODE:200|SIZE:1983)
++ http://192.168.1.100/info.php (CODE:200|SIZE:37922)
+&lt;/pre&gt;
+
+&lt;p&gt;/~ftp and /cgi-bin/ are not accessible. &lt;b&gt;info.php&lt;/b&gt; contains the PHP configuration of the website:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/images/screen2.png&quot; alt=&quot;Alt text&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;Some interesting information from the info.php:&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;The kernel is 2.6.16 32bit&lt;/li&gt;
+  &lt;li&gt;allow_url_fopen is enable, which can be used is there’s a RFI vulnerability present&lt;/li&gt;
+  &lt;li&gt;Apache is running under nobody’s account, which means I won’t get root access in case of a compromise throught the web server application&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;To generate a possible wordlist to use against password attacks, I use the tool cewl to grab information from the webpage /index2.php and generate a list of possible passwords:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/images/screen3.png&quot; alt=&quot;Alt text&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;The SysAdmins are the most probably users of the core system, so I generate a simple list with possible usernames for the OS:&lt;/p&gt;
+
+&lt;p&gt;Some companies use the email username section as usernames, but other permutations may happen as well. What I did was also use first letter of first name + surname:&lt;/p&gt;
+
+&lt;pre&gt;
+aadams
+bbanter
+ccoffee
+&lt;/pre&gt;
+
+&lt;p&gt;and the normal email usernames:&lt;/p&gt;
+
+&lt;pre&gt;
+adamsa
+banterb
+coffeec
+&lt;/pre&gt;
+
+&lt;p&gt;I put everything into a file admin_users.txt.&lt;/p&gt;
+
+&lt;h3 id=&quot;smtp-enumeration&quot;&gt;SMTP Enumeration&lt;/h3&gt;
+
+&lt;p&gt;Now I can use the SMTP server to enumerate the admin_users.txt list:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/images/screen4.png&quot; alt=&quot;Alt text&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;I get 3 usernames found: &lt;b&gt;aadams&lt;/b&gt;, &lt;b&gt;bbanter&lt;/b&gt;, &lt;b&gt;ccofee&lt;/b&gt;. Notice also that I had to use a &lt;b&gt;from email: my@slax.example.net&lt;/b&gt; which is the domain the SMTP server accepts.&lt;/p&gt;
+
+&lt;h2 id=&quot;exploitation&quot;&gt;Exploitation&lt;/h2&gt;
+
+&lt;h3 id=&quot;penetrating-the-system&quot;&gt;Penetrating the System&lt;/h3&gt;
+
+&lt;p&gt;Per the previous information gathering phase, I was able to learn that there are at least 3 known users in the system: aadams, bbanter, ccofee.&lt;/p&gt;
+
+&lt;p&gt;Per the information available in the website, I know that Bob Banter (bbanter) is an intern and probably lacks some good security pratices. This makes him a target.&lt;/p&gt;
+
+&lt;p&gt;I was able to login into the system through SSH, using the username bbanter and password bbanter:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/images/screen5.png&quot; alt=&quot;Alt text&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;As expected, Bob Banter is not following the good security practices and used his username as the password.&lt;/p&gt;
+
+&lt;h3 id=&quot;local-privilege-escalation&quot;&gt;Local Privilege Escalation&lt;/h3&gt;
+
+&lt;p&gt;From the /etc/passwd file I can see the account aadams is part of the wheel group, which means it can sudo with root privileges:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/images/screen6.png&quot; alt=&quot;Alt text&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;The account aadams becomes a target as it can provide me high privileges on the machine.&lt;/p&gt;
+
+&lt;p&gt;I run a password brute force attack against aadams account with Hydra and I get the nostradamus password:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/images/screen7.png&quot; alt=&quot;Alt text&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;I’ve used the pop3 service as it’s much faster than trying the brute force against SSH.&lt;/p&gt;
+
+&lt;p&gt;I can now change to account aadams and use sudo to get the shadow file:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/images/screen8.png&quot; alt=&quot;Alt text&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/images/screen9.png&quot; alt=&quot;Alt text&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;root hash password: $1$TOi0HE5n$j3obHaAlUdMbHQnJ4Y5Dq0&lt;/p&gt;
+
+&lt;pre&gt;
+aadams:$1$6cP/ya8m$2CNF8mE.ONyQipxlwjp8P1:13550:0:99999:7:::
+bbanter:$1$hl312g8m$Cf9v9OoRN062STzYiWDTh1:13550:0:99999:7:::
+ccoffee:$1$nsHnABm3$OHraCR9ro.idCMtEiFPPA.:13550:0:99999:7:::
+&lt;/pre&gt;
+
+&lt;p&gt;Just using the account aadams and sudo I can see there’s a interesting file in /home/ftp/incoming:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/images/screen10.png&quot; alt=&quot;Alt text&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;The file seems to be encrypted.&lt;/p&gt;
+
+&lt;p&gt;I proceed and try to crack the password hashes in the shadow with john the ripper:&lt;/p&gt;
+
+&lt;pre&gt;
+root@kali:~# john --wordlist=/usr/share/wordlists/rockyou.txt pass.txt
+&lt;/pre&gt;
+
+&lt;p&gt;I was able to crack the hash:&lt;/p&gt;
+
+&lt;pre&gt;
+root@kali:~# john --show pass.txt 
+root:tarot
+&lt;/pre&gt;
+
+&lt;p&gt;I also found out the ccoffee’s password:&lt;/p&gt;
+&lt;pre&gt;
+ccoffee:hierophant
+&lt;/pre&gt;
+
+&lt;p&gt;At this moment I have the password for root and the 3 admins:&lt;/p&gt;
+
+&lt;pre&gt;
+root:tarot
+aadams:nostradamus
+bbanter:bbanter
+ccoffee:hierophant
+&lt;/pre&gt;
+
+&lt;h3 id=&quot;capturing-the-flag&quot;&gt;Capturing the Flag&lt;/h3&gt;
+
+&lt;p&gt;Analysing the file salary_dec2003.csv.enc with strings, I see the Salted__ word. Some googling tells me this is a openssl encrypted file.&lt;/p&gt;
+
+&lt;p&gt;From the /etc/passwd file I got a hint that the root’s password might be used in the FTP encryption (and consequently the .csv file). I scp the file to my Kali machine and use openssl to decrypt the file:&lt;/p&gt;
+
+&lt;pre&gt;
+root@kali:~# openssl enc -aes-128-cbc -d -in salary_dec2003.csv.enc -out salary_dec2003.csv -k tarot
+&lt;/pre&gt;
+
+&lt;p&gt;I didn’t know the cipher used for the encryption, so I tried the first one and I was lucky. Now I open the .csv file in Excel:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/images/screen11.png&quot; alt=&quot;Alt text&quot; /&gt;&lt;/p&gt;
+</description>
+        <pubDate>Mon, 16 Nov 2015 12:55:41 -0800</pubDate>
+        <link>/pentesting/2015/11/16/deice-s1100.html</link>
+        <guid isPermaLink="true">/pentesting/2015/11/16/deice-s1100.html</guid>
+        
+        
+        <category>Pentesting</category>
+        
+      </item>
+    
+      <item>
+        <title>My break after the Offensive-Security PWK labs</title>
+        <description>&lt;p&gt;After finishing the Offensive Security PWK course labs, I decided to take a break and wait for a while before taking the certification exam. This was because, first, I needed some rest, and second, I wanted to have more time to prepare the labs report and generate a good template report for the exam.&lt;/p&gt;
+
+&lt;p&gt;I learned so much during the PWK labs, that during this break, I decided to put my hands on some of the vulnerable machine challenges out there. I’m using the website &lt;a href=&quot;http://www.vulnhub.com&quot;&gt;Vulnerable by Design&lt;/a&gt; and after reading some stuff on the web, the De-ICE series, Kioptrix, Holynix and Tr0ll seem to be good targets. These are all “boot2root” vulnerable VMs.&lt;/p&gt;
+
+&lt;p&gt;I thought to myself that these VMs should be pretty simple, after the experience I had with the PWK labs. It happens that I was wrong and I actually learned new things that could be helpful on the OSCP exam. I’ll be posting my walkthroughs of these challenges.&lt;/p&gt;
+
+</description>
+        <pubDate>Mon, 16 Nov 2015 12:43:41 -0800</pubDate>
+        <link>/pentesting/2015/11/16/oscp-break.html</link>
+        <guid isPermaLink="true">/pentesting/2015/11/16/oscp-break.html</guid>
+        
+        
+        <category>Pentesting</category>
+        
+      </item>
+    
+  </channel>
+</rss>

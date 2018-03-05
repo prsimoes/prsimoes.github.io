@@ -2,13 +2,12 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>...and another security blog</title>
-    <description>Adventures in the Infosec world.
-</description>
+    <description>Adventures in the Infosec world.</description>
     <link>http://localhost:4000/</link>
     <atom:link href="http://localhost:4000/feed.xml" rel="self" type="application/rss+xml"/>
-    <pubDate>Sun, 04 Mar 2018 01:55:04 -0800</pubDate>
-    <lastBuildDate>Sun, 04 Mar 2018 01:55:04 -0800</lastBuildDate>
-    <generator>Jekyll v3.7.3</generator>
+    <pubDate>Sun, 04 Mar 2018 18:11:28 -0800</pubDate>
+    <lastBuildDate>Sun, 04 Mar 2018 18:11:28 -0800</lastBuildDate>
+    <generator>Jekyll v3.6.2</generator>
     
       <item>
         <title>PentestIT Lab v11 - CRM</title>

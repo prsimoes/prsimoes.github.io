@@ -2,7 +2,7 @@
 layout: post
 title:  "De-ICE S1.100 walkthrough"
 date:   2015-11-16 12:55:41 -0800
-categories: Pentesting
+categories: Pentesting CTF
 ---
 ## Information Gathering
 
@@ -168,7 +168,7 @@ root@kali:~# john --wordlist=/usr/share/wordlists/rockyou.txt pass.txt
 I was able to crack the hash:
 
 <pre>
-root@kali:~# john --show pass.txt 
+root@kali:~# john --show pass.txt
 root:tarot
 </pre>
 
@@ -188,7 +188,7 @@ ccoffee:hierophant
 
 ### Capturing the Flag
 
-Analysing the file salary_dec2003.csv.enc with strings, I see the Salted__ word. Some googling tells me this is a openssl encrypted file. 
+Analysing the file salary_dec2003.csv.enc with strings, I see the Salted__ word. Some googling tells me this is a openssl encrypted file.
 
 From the /etc/passwd file I got a hint that the root's password might be used in the FTP encryption (and consequently the .csv file). I scp the file to my Kali machine and use openssl to decrypt the file:
 

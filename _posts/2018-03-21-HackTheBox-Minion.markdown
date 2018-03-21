@@ -2,6 +2,7 @@
 layout: post
 title:  "HackTheBox - Minion"
 date:   2018-03-21 10:35:00 -0800
+published: false
 categories: Pentesting CTF
 ---
 This was an interesting box. It made me think out of the box, implement automation and learn more about Powershell.

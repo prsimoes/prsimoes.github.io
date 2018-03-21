@@ -4,7 +4,7 @@ title:  "HackTheBox - Minion"
 date:   2018-03-21 10:35:00 -0800
 categories: Pentesting CTF
 ---
-This was an interesting box. It made me think out of the box, implement automation and specially be more hands-on with Powershell.
+This was an interesting box. It made me think out of the box, implement automation and learn more about Powershell.
 
 ## Service Scanning
 
